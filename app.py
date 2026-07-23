@@ -478,80 +478,74 @@ run = st.button("🔍 교차검증 실행", type="primary")
 st.divider()
 
 st.subheader("국내 출처")
-col1, col2 = st.columns(2)
 
-with col1:
-    with st.container(border=True, key="card-gdelt"):
-        if run and query:
-            gdelt_url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={quote(query)}&mode=artlist&maxrecords=20&format=html"
-            gdelt_desc = f'"{query}" 검색 결과로 바로 이동합니다.'
-            gdelt_btn = "검색 결과 보기"
+with st.container(border=True, key="card-gdelt"):
+    if run and query:
+        gdelt_url = f"https://search.naver.com/search.naver?where=news&query={quote(query)}"
+        gdelt_desc = f'"{query}" 네이버 뉴스 검색 결과로 바로 이동합니다.'
+        gdelt_btn = "검색 결과 보기"
+    else:
+        gdelt_url = "https://search.naver.com/search.naver?where=news"
+        gdelt_desc = "국내 뉴스 기사를 교차검색합니다. 검색어를 입력하고 버튼을 누르면 검색 결과로 바로 연결됩니다."
+        gdelt_btn = "네이버 뉴스 바로가기"
+    st.markdown(
+        linkout_card("images/avatar-jinsil.png", "🌐 네이버 뉴스 검색", gdelt_desc, gdelt_url, gdelt_btn),
+        unsafe_allow_html=True,
+    )
+
+with st.container(border=True, key="card-google"):
+    ch1, ch2 = st.columns([5, 1])
+    ch1.markdown("<p class='card-title'>✅ Google Fact Check</p>", unsafe_allow_html=True)
+    ch2.markdown(avatar_badge("images/avatar-hyeontam.png"), unsafe_allow_html=True)
+    if run and query:
+        error_msg = None
+        claims = None
+        try:
+            claims = fetch_google_factcheck(query)
+        except Exception as e:
+            error_msg = str(e)
+        if error_msg:
+            st.caption(f"조회 실패: {error_msg}")
+        elif claims is None:
+            st.caption("Streamlit Secrets에 GOOGLE_FACTCHECK_API_KEY를 추가하면 조회됩니다.")
+        elif claims:
+            for c in claims[:8]:
+                review = (c.get("claimReview") or [{}])[0]
+                st.markdown(f"**[{c.get('text','')}]({review.get('url','#')})**")
+                st.caption(f"{c.get('claimant','출처 미상')} · {(review.get('publisher') or {}).get('name','')}")
+                if review.get("textualRating"):
+                    st.caption(f"판정: {review['textualRating']}")
         else:
-            gdelt_url = "https://www.gdeltproject.org/"
-            gdelt_desc = "전 세계 뉴스를 실시간으로 모아둔 국제 데이터베이스 (영어 위주). 검색어를 입력하고 버튼을 누르면 검색 결과로 바로 연결됩니다."
-            gdelt_btn = "gdeltproject.org 바로가기"
-        st.markdown(
-            linkout_card("images/avatar-jinsil.png", "🌐 GDELT Project", gdelt_desc, gdelt_url, gdelt_btn),
-            unsafe_allow_html=True,
-        )
+            st.caption("등록된 팩트체크 결과가 없습니다.")
+    else:
+        st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
 
-with col2:
-    with st.container(border=True, key="card-google"):
-        ch1, ch2 = st.columns([5, 1])
-        ch1.markdown("<p class='card-title'>✅ Google Fact Check</p>", unsafe_allow_html=True)
-        ch2.markdown(avatar_badge("images/avatar-hyeontam.png"), unsafe_allow_html=True)
-        if run and query:
-            error_msg = None
-            claims = None
-            try:
-                claims = fetch_google_factcheck(query)
-            except Exception as e:
-                error_msg = str(e)
-            if error_msg:
-                st.caption(f"조회 실패: {error_msg}")
-            elif claims is None:
-                st.caption("Streamlit Secrets에 GOOGLE_FACTCHECK_API_KEY를 추가하면 조회됩니다.")
-            elif claims:
-                for c in claims[:8]:
-                    review = (c.get("claimReview") or [{}])[0]
-                    st.markdown(f"**[{c.get('text','')}]({review.get('url','#')})**")
-                    st.caption(f"{c.get('claimant','출처 미상')} · {(review.get('publisher') or {}).get('name','')}")
-                    if review.get("textualRating"):
-                        st.caption(f"판정: {review['textualRating']}")
-            else:
-                st.caption("등록된 팩트체크 결과가 없습니다.")
-        else:
-            st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
-
+st.subheader("통계·정책 자료 바로가기")
 col3, col4 = st.columns(2)
 
 with col3:
     with st.container(border=True, key="card-kosis"):
-        if run and query:
-            kosis_url = f"https://kosis.kr/search/search.do?query={quote(query)}"
-            kosis_desc = f'"{query}" 검색 결과로 바로 이동합니다.'
-            kosis_btn = "검색 결과 보기"
-        else:
-            kosis_url = "https://kosis.kr"
-            kosis_desc = "통계청이 제공하는 국가 통계 원자료. 검색어를 입력하고 버튼을 누르면 검색 결과로 바로 연결됩니다."
-            kosis_btn = "kosis.kr 바로가기"
         st.markdown(
-            linkout_card("images/avatar-seulgi.png", "📊 KOSIS 통합검색", kosis_desc, kosis_url, kosis_btn),
+            linkout_card(
+                "images/avatar-seulgi.png",
+                "📊 KOSIS 통합검색",
+                "통계청이 제공하는 국가 통계 원자료. 숫자·통계 관련 주장을 원본 데이터로 직접 대조해보세요.",
+                "https://kosis.kr",
+                "kosis.kr 바로가기",
+            ),
             unsafe_allow_html=True,
         )
 
 with col4:
     with st.container(border=True, key="card-briefing"):
-        if run and query:
-            briefing_url = f"https://www.korea.kr/search/total/search.do?srchWord={quote(query)}"
-            briefing_desc = f'"{query}" 검색 결과로 바로 이동합니다.'
-            briefing_btn = "검색 결과 보기"
-        else:
-            briefing_url = "https://www.korea.kr/briefing/factView.do"
-            briefing_desc = "정부 각 부처가 언론 보도에 직접 반박·해명한 자료 모음. 검색어를 입력하고 버튼을 누르면 검색 결과로 바로 연결됩니다."
-            briefing_btn = "korea.kr 바로가기"
         st.markdown(
-            linkout_card("images/avatar-hangyeol.png", '📰 정책브리핑 "사실은 이렇습니다"', briefing_desc, briefing_url, briefing_btn),
+            linkout_card(
+                "images/avatar-hangyeol.png",
+                '📰 정책브리핑 "사실은 이렇습니다"',
+                "정부 각 부처가 언론 보도에 직접 반박·해명한 자료 모음. 정책 관련 소문을 정부 공식 입장과 대조해보세요.",
+                "https://www.korea.kr/briefing/factView.do",
+                "korea.kr 바로가기",
+            ),
             unsafe_allow_html=True,
         )
 
