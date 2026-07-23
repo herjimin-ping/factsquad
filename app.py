@@ -134,20 +134,30 @@ st.markdown(
         opacity: 0.8;
     }
 
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: rgba(255, 255, 255, 0.94) !important;
+    /* 카드(container border=True, key="card-...") — 흰색 유리 패널, 확실하게 먹히는 key 기반 선택자 */
+    div[class*="st-key-card-"] {
+        background: rgba(255, 255, 255, 0.97) !important;
         border: 1px solid rgba(56,189,248,0.35) !important;
         border-radius: 14px !important;
         box-shadow: 0 4px 18px rgba(0,0,0,0.25);
     }
-    div[data-testid="stVerticalBlockBorderWrapper"] h1,
-    div[data-testid="stVerticalBlockBorderWrapper"] h2,
-    div[data-testid="stVerticalBlockBorderWrapper"] h3,
-    div[data-testid="stVerticalBlockBorderWrapper"] h4,
-    div[data-testid="stVerticalBlockBorderWrapper"] p,
-    div[data-testid="stVerticalBlockBorderWrapper"] span,
-    div[data-testid="stVerticalBlockBorderWrapper"] label {
+    div[class*="st-key-card-"] h1,
+    div[class*="st-key-card-"] h2,
+    div[class*="st-key-card-"] h3,
+    div[class*="st-key-card-"] h4,
+    div[class*="st-key-card-"] p,
+    div[class*="st-key-card-"] span,
+    div[class*="st-key-card-"] label {
         color: #16233b !important;
+    }
+    .card-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #16233b;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin: 0;
     }
 
     /* 해외 출처 카드 — 국내(흰색)와 구분되는 호박색 톤 */
@@ -383,7 +393,6 @@ def solar_chat(message: str) -> str:
         return f"오류가 발생했어요: {e}"
 
 
-# ---- 상단: 마스코트 + 제목 (가깝게 붙여서, 사이버 타이포) ----
 st.markdown(
     f"""
     <div class="brand-row">
@@ -429,9 +438,9 @@ st.subheader("국내 출처")
 col1, col2 = st.columns(2)
 
 with col1:
-    with st.container(border=True):
+    with st.container(border=True, key="card-gdelt"):
         ch1, ch2 = st.columns([5, 1])
-        ch1.markdown("#### 🌐 GDELT Project")
+        ch1.markdown("<p class='card-title'>🌐 GDELT Project</p>", unsafe_allow_html=True)
         ch2.markdown(avatar_badge("images/avatar-jinsil.png"), unsafe_allow_html=True)
         if run and query:
             try:
@@ -448,9 +457,9 @@ with col1:
             st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
 
 with col2:
-    with st.container(border=True):
+    with st.container(border=True, key="card-google"):
         ch1, ch2 = st.columns([5, 1])
-        ch1.markdown("#### ✅ Google Fact Check")
+        ch1.markdown("<p class='card-title'>✅ Google Fact Check</p>", unsafe_allow_html=True)
         ch2.markdown(avatar_badge("images/avatar-hyeontam.png"), unsafe_allow_html=True)
         if run and query:
             claims = fetch_google_factcheck(query)
@@ -471,9 +480,9 @@ with col2:
 col3, col4 = st.columns(2)
 
 with col3:
-    with st.container(border=True):
+    with st.container(border=True, key="card-kosis"):
         ch1, ch2 = st.columns([5, 1])
-        ch1.markdown("#### 📊 KOSIS 통합검색")
+        ch1.markdown("<p class='card-title'>📊 KOSIS 통합검색</p>", unsafe_allow_html=True)
         ch2.markdown(avatar_badge("images/avatar-seulgi.png"), unsafe_allow_html=True)
         if run and query:
             items = fetch_kosis(query)
@@ -490,9 +499,9 @@ with col3:
             st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
 
 with col4:
-    with st.container(border=True):
+    with st.container(border=True, key="card-briefing"):
         ch1, ch2 = st.columns([5, 1])
-        ch1.markdown('#### 📰 정책브리핑 "사실은 이렇습니다"')
+        ch1.markdown('<p class="card-title">📰 정책브리핑 "사실은 이렇습니다"</p>', unsafe_allow_html=True)
         ch2.markdown(avatar_badge("images/avatar-hangyeol.png"), unsafe_allow_html=True)
         if run and query:
             items = fetch_briefing(query)
@@ -508,9 +517,9 @@ with col4:
             st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
 
 st.subheader("용어 사전 — 이 단어, 무슨 뜻?")
-with st.container(border=True):
+with st.container(border=True, key="card-dict"):
     ch1, ch2 = st.columns([5, 1])
-    ch1.markdown("#### 📖 뉴스 용어 사전")
+    ch1.markdown("<p class='card-title'>📖 뉴스 용어 사전</p>", unsafe_allow_html=True)
     ch2.markdown(avatar_badge("images/avatar-jinsil.png"), unsafe_allow_html=True)
     word = st.text_input("뉴스에서 본 낯선 단어를 입력", placeholder="예: 필리버스터, 유예", key="dict_word")
     if st.button("찾기"):
@@ -538,7 +547,7 @@ with fc2:
 
 st.subheader("수색대원에게 물어보기")
 
-with st.container(border=True):
+with st.container(border=True, key="card-chat"):
     face_cols = st.columns(8)
     face_files = ["avatar-hangyeol.png", "avatar-jinsil.png", "avatar-seulgi.png", "avatar-hyeontam.png"]
     for i, f in enumerate(face_files):
