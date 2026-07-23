@@ -234,7 +234,7 @@ STDICT_API_KEY = secret("STDICT_API_KEY")
 def fetch_gdelt(q: str):
     url = "https://api.gdeltproject.org/api/v2/doc/doc"
     params = {"query": q, "mode": "artlist", "maxrecords": 8, "format": "json", "sort": "hybridrel"}
-    r = requests.get(url, params=params, timeout=10)
+    r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
     try:
         return r.json().get("articles", [])
@@ -268,7 +268,7 @@ def fetch_kosis(q: str):
         "format": "json",
         "resultCount": 8,
     }
-    r = requests.get(url, params=params, timeout=10)
+    r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
     try:
         data = r.json()
@@ -292,7 +292,7 @@ def fetch_briefing(keyword: str):
         "startDate": start.strftime("%Y%m%d"),
         "endDate": end.strftime("%Y%m%d"),
     }
-    r = requests.get(url, params=params, timeout=10)
+    r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
     xml = r.text
 
@@ -377,9 +377,9 @@ def holo_card(img_path: str, unit_no: str, name: str, role_line: str, meaning: s
     )
 
 
-def avatar_badge(img_path: str) -> str:
+def avatar_badge(img_path: str, size: int = 52) -> str:
     b64 = img_b64(img_path)
-    return f'<div class="avatar-circle"><img src="data:image/png;base64,{b64}"></div>'
+    return f'<div class="avatar-circle" style="width:{size}px;height:{size}px;"><img src="data:image/png;base64,{b64}"></div>'
 
 
 def foreign_card(name: str, desc: str, url: str, link_text: str) -> str:
@@ -568,19 +568,34 @@ with col4:
 
 st.subheader("용어 사전 — 이 단어, 무슨 뜻?")
 with st.container(border=True, key="card-dict"):
-    ch1, ch2 = st.columns([5, 1])
-    ch1.markdown("<p class='card-title'>📖 뉴스 용어 사전</p>", unsafe_allow_html=True)
-    ch2.markdown(avatar_badge("images/avatar-mascot.png"), unsafe_allow_html=True)
-    word = st.text_input("뉴스에서 본 낯선 단어를 입력", placeholder="예: 필리버스터, 유예", key="dict_word")
-    if st.button("찾기"):
-        if word:
-            entries = fetch_dict(word)
-            if entries:
-                for e in entries[:5]:
-                    st.markdown(f"**{e['word']}** · _{e['source']}_")
-                    st.write(e["definition"])
-            else:
-                st.caption(f'"{word}"에 대한 뜻풀이를 찾지 못했습니다. 수색대원(챗봇)에게 물어보세요.')
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
+        f"{avatar_badge('images/avatar-mascot.png', size=38)}"
+        f"<span class='card-title' style='font-size:16px;'>📖 뉴스 용어 사전</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    def _run_dict_search():
+        w = st.session_state.get("dict_word", "").strip()
+        st.session_state.dict_entries = fetch_dict(w) if w else None
+        st.session_state.dict_searched_word = w
+
+    st.text_input(
+        "뉴스에서 본 낯선 단어를 입력",
+        placeholder="예: 필리버스터, 유예 (입력 후 Enter)",
+        key="dict_word",
+        on_change=_run_dict_search,
+    )
+
+    entries = st.session_state.get("dict_entries")
+    searched_word = st.session_state.get("dict_searched_word")
+    if entries:
+        for e in entries[:5]:
+            st.markdown(f"**{e['word']}** · _{e['source']}_")
+            st.write(e["definition"])
+    elif searched_word:
+        st.caption(f'"{searched_word}"에 대한 뜻풀이를 찾지 못했습니다. 수색대원(챗봇)에게 물어보세요.')
 
 st.subheader("해외 출처 (연동 예정)")
 fc1, fc2 = st.columns(2)
