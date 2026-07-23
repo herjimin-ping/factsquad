@@ -134,7 +134,6 @@ st.markdown(
         opacity: 0.8;
     }
 
-    /* 카드(container border=True, key="card-...") — 흰색 유리 패널, 확실하게 먹히는 key 기반 선택자 */
     div[class*="st-key-card-"] {
         background: rgba(255, 255, 255, 0.97) !important;
         border: 1px solid rgba(56,189,248,0.35) !important;
@@ -159,6 +158,26 @@ st.markdown(
         text-overflow: ellipsis;
         margin: 0;
     }
+
+    /* 뉴스 용어 사전 카드만 연한 파랑 (검색창은 흰색 유지) */
+    div[class*="st-key-card-dict"] {
+        background: #e6f4fd !important;
+    }
+
+    /* 버튼: 항상 파란 배경 + 흰 글씨로 (검정색 버튼 방지) */
+    .stButton button {
+        background-color: #38bdf8 !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+    }
+    .stButton button:hover { background-color: #2196d4 !important; color: #ffffff !important; }
+
+    /* 수색대원 얼굴 + 이름을 가깝게 붙인 줄 */
+    .chat-team-row { display: flex; gap: 22px; margin-bottom: 14px; flex-wrap: wrap; }
+    .chat-team-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .chat-team-item span { font-size: 11.5px; font-weight: 700; color: #16233b; }
 
     /* 해외 출처 카드 — 국내(흰색)와 구분되는 호박색 톤 */
     .foreign-card {
@@ -520,7 +539,7 @@ st.subheader("용어 사전 — 이 단어, 무슨 뜻?")
 with st.container(border=True, key="card-dict"):
     ch1, ch2 = st.columns([5, 1])
     ch1.markdown("<p class='card-title'>📖 뉴스 용어 사전</p>", unsafe_allow_html=True)
-    ch2.markdown(avatar_badge("images/avatar-jinsil.png"), unsafe_allow_html=True)
+    ch2.markdown(avatar_badge("images/avatar-mascot.png"), unsafe_allow_html=True)
     word = st.text_input("뉴스에서 본 낯선 단어를 입력", placeholder="예: 필리버스터, 유예", key="dict_word")
     if st.button("찾기"):
         if word:
@@ -548,29 +567,37 @@ with fc2:
 st.subheader("수색대원에게 물어보기")
 
 with st.container(border=True, key="card-chat"):
-    face_cols = st.columns(8)
-    face_files = ["avatar-hangyeol.png", "avatar-jinsil.png", "avatar-seulgi.png", "avatar-hyeontam.png"]
-    for i, f in enumerate(face_files):
-        with face_cols[i]:
-            st.markdown(avatar_badge(f"images/{f}"), unsafe_allow_html=True)
+    team = [
+        ("images/avatar-hangyeol.png", "한결"),
+        ("images/avatar-jinsil.png", "진실"),
+        ("images/avatar-seulgi.png", "슬기"),
+        ("images/avatar-hyeontam.png", "현탐"),
+    ]
+    items_html = "".join(
+        f'<div class="chat-team-item">{avatar_badge(p)}<span>{n}</span></div>' for p, n in team
+    )
+    st.markdown(f'<div class="chat-team-row">{items_html}</div>', unsafe_allow_html=True)
 
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-
-    for role, text in st.session_state.chat_history:
-        with st.chat_message("user" if role == "user" else "assistant"):
-            st.write(text)
+    if "last_user_msg" not in st.session_state:
+        st.session_state.last_user_msg = None
+        st.session_state.last_reply = None
 
     user_msg = st.chat_input("예: 이 기사에 나온 '컨틴전시 플랜'이 뭐야?")
     if user_msg:
-        st.session_state.chat_history.append(("user", user_msg))
+        with st.spinner("생각 중…"):
+            reply = solar_chat(user_msg)
+        st.session_state.last_user_msg = user_msg
+        st.session_state.last_reply = reply
+
+    if st.session_state.last_user_msg:
         with st.chat_message("user"):
-            st.write(user_msg)
+            st.write(st.session_state.last_user_msg)
         with st.chat_message("assistant"):
-            with st.spinner("생각 중…"):
-                reply = solar_chat(user_msg)
-            st.write(reply)
-        st.session_state.chat_history.append(("assistant", reply))
+            st.write(st.session_state.last_reply)
+        if st.button("대화 지우기"):
+            st.session_state.last_user_msg = None
+            st.session_state.last_reply = None
+            st.rerun()
 
 st.divider()
 st.caption("수업용 프로토타입 · 모든 API 키는 Streamlit Secrets에만 보관되며 이 코드에는 들어있지 않습니다.")
