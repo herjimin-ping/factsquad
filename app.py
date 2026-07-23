@@ -236,7 +236,10 @@ def fetch_gdelt(q: str):
     params = {"query": q, "mode": "artlist", "maxrecords": 8, "format": "json", "sort": "hybridrel"}
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
-    return r.json().get("articles", [])
+    try:
+        return r.json().get("articles", [])
+    except ValueError:
+        return []
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -247,7 +250,10 @@ def fetch_google_factcheck(q: str):
     params = {"query": q, "key": GOOGLE_FACTCHECK_API_KEY}
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
-    return r.json().get("claims", [])
+    try:
+        return r.json().get("claims", [])
+    except ValueError:
+        return []
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -264,7 +270,11 @@ def fetch_kosis(q: str):
     }
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
-    data = r.json()
+    try:
+        data = r.json()
+    except ValueError:
+        # KOSIS가 JSON이 아닌 에러 메시지(XML/HTML 등)를 돌려준 경우
+        return []
     if isinstance(data, list):
         return data
     return data.get("SearchInfo", data.get("searchInfo", []))
@@ -481,8 +491,15 @@ with col2:
         ch1.markdown("<p class='card-title'>✅ Google Fact Check</p>", unsafe_allow_html=True)
         ch2.markdown(avatar_badge("images/avatar-hyeontam.png"), unsafe_allow_html=True)
         if run and query:
-            claims = fetch_google_factcheck(query)
-            if claims is None:
+            error_msg = None
+            claims = None
+            try:
+                claims = fetch_google_factcheck(query)
+            except Exception as e:
+                error_msg = str(e)
+            if error_msg:
+                st.caption(f"조회 실패: {error_msg}")
+            elif claims is None:
                 st.caption("Streamlit Secrets에 GOOGLE_FACTCHECK_API_KEY를 추가하면 조회됩니다.")
             elif claims:
                 for c in claims[:8]:
@@ -504,8 +521,15 @@ with col3:
         ch1.markdown("<p class='card-title'>📊 KOSIS 통합검색</p>", unsafe_allow_html=True)
         ch2.markdown(avatar_badge("images/avatar-seulgi.png"), unsafe_allow_html=True)
         if run and query:
-            items = fetch_kosis(query)
-            if items is None:
+            error_msg = None
+            items = None
+            try:
+                items = fetch_kosis(query)
+            except Exception as e:
+                error_msg = str(e)
+            if error_msg:
+                st.caption(f"조회 실패: {error_msg}")
+            elif items is None:
                 st.caption("Streamlit Secrets에 KOSIS_API_KEY를 추가하면 조회됩니다.")
             elif items:
                 for it in items[:8]:
@@ -523,8 +547,15 @@ with col4:
         ch1.markdown('<p class="card-title">📰 정책브리핑 "사실은 이렇습니다"</p>', unsafe_allow_html=True)
         ch2.markdown(avatar_badge("images/avatar-hangyeol.png"), unsafe_allow_html=True)
         if run and query:
-            items = fetch_briefing(query)
-            if items is None:
+            error_msg = None
+            items = None
+            try:
+                items = fetch_briefing(query)
+            except Exception as e:
+                error_msg = str(e)
+            if error_msg:
+                st.caption(f"조회 실패: {error_msg}")
+            elif items is None:
                 st.caption("Streamlit Secrets에 POLICY_SERVICE_KEY를 추가하면 조회됩니다.")
             elif items:
                 for it in items[:8]:
