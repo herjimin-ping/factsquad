@@ -14,6 +14,7 @@ API 키는 전부 st.secrets 에서만 읽어옵니다. 이 파일에는 실제 
 import re
 from base64 import b64encode
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 import requests
 import streamlit as st
@@ -273,7 +274,6 @@ def fetch_kosis(q: str):
     try:
         data = r.json()
     except ValueError:
-        # KOSIS가 JSON이 아닌 에러 메시지(XML/HTML 등)를 돌려준 경우
         return []
     if isinstance(data, list):
         return data
@@ -392,6 +392,20 @@ def foreign_card(name: str, desc: str, url: str, link_text: str) -> str:
     """
 
 
+def linkout_card(avatar_path: str, title: str, desc: str, url: str, link_text: str) -> str:
+    avatar_html = avatar_badge(avatar_path)
+    return f"""
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:10px;">
+        <p class="card-title" style="white-space:normal;">{title}</p>
+        {avatar_html}
+    </div>
+    <p style="color:#5b6b80; font-size:13px; margin:0 0 10px;">{desc}</p>
+    <a href="{url}" target="_blank" style="display:inline-block; padding:8px 14px; border:1px solid #38bdf8;
+       color:#16233b; border-radius:8px; text-decoration:none; font-size:13px; font-weight:700;
+       background: rgba(56,189,248,0.10);">{link_text} →</a>
+    """
+
+
 def solar_chat(message: str) -> str:
     if not SOLAR_API_KEY:
         return "Solar API 키가 설정되지 않았어요. Streamlit Secrets에 SOLAR_API_KEY를 추가해주세요."
@@ -468,22 +482,18 @@ col1, col2 = st.columns(2)
 
 with col1:
     with st.container(border=True, key="card-gdelt"):
-        ch1, ch2 = st.columns([5, 1])
-        ch1.markdown("<p class='card-title'>🌐 GDELT Project</p>", unsafe_allow_html=True)
-        ch2.markdown(avatar_badge("images/avatar-jinsil.png"), unsafe_allow_html=True)
         if run and query:
-            try:
-                arts = fetch_gdelt(query)
-                if arts:
-                    for a in arts[:8]:
-                        st.markdown(f"**[{a.get('title','')}]({a.get('url','#')})**")
-                        st.caption(f"{a.get('domain','')} · {a.get('seendate','')} · {a.get('language','')}")
-                else:
-                    st.caption("일치하는 기사를 찾지 못했습니다. 영어 키워드로 시도해보세요.")
-            except Exception as e:
-                st.caption(f"조회 실패: {e}")
+            gdelt_url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={quote(query)}&mode=artlist&maxrecords=20&format=html"
+            gdelt_desc = f'"{query}" 검색 결과로 바로 이동합니다.'
+            gdelt_btn = "검색 결과 보기"
         else:
-            st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
+            gdelt_url = "https://www.gdeltproject.org/"
+            gdelt_desc = "전 세계 뉴스를 실시간으로 모아둔 국제 데이터베이스 (영어 위주). 검색어를 입력하고 버튼을 누르면 검색 결과로 바로 연결됩니다."
+            gdelt_btn = "gdeltproject.org 바로가기"
+        st.markdown(
+            linkout_card("images/avatar-jinsil.png", "🌐 GDELT Project", gdelt_desc, gdelt_url, gdelt_btn),
+            unsafe_allow_html=True,
+        )
 
 with col2:
     with st.container(border=True, key="card-google"):
@@ -517,60 +527,39 @@ col3, col4 = st.columns(2)
 
 with col3:
     with st.container(border=True, key="card-kosis"):
-        ch1, ch2 = st.columns([5, 1])
-        ch1.markdown("<p class='card-title'>📊 KOSIS 통합검색</p>", unsafe_allow_html=True)
-        ch2.markdown(avatar_badge("images/avatar-seulgi.png"), unsafe_allow_html=True)
         if run and query:
-            error_msg = None
-            items = None
-            try:
-                items = fetch_kosis(query)
-            except Exception as e:
-                error_msg = str(e)
-            if error_msg:
-                st.caption(f"조회 실패: {error_msg}")
-            elif items is None:
-                st.caption("Streamlit Secrets에 KOSIS_API_KEY를 추가하면 조회됩니다.")
-            elif items:
-                for it in items[:8]:
-                    link = it.get("LINK_URL") or it.get("TBL_VIEW_URL") or "#"
-                    st.markdown(f"**[{it.get('TBL_NM','')}]({link})**")
-                    st.caption(f"{it.get('ORG_NM','')} · {it.get('STRT_PRD_DE','')}~{it.get('END_PRD_DE','')}")
-            else:
-                st.caption("일치하는 통계표를 찾지 못했습니다.")
+            kosis_url = f"https://kosis.kr/search/search.do?query={quote(query)}"
+            kosis_desc = f'"{query}" 검색 결과로 바로 이동합니다.'
+            kosis_btn = "검색 결과 보기"
         else:
-            st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
+            kosis_url = "https://kosis.kr"
+            kosis_desc = "통계청이 제공하는 국가 통계 원자료. 검색어를 입력하고 버튼을 누르면 검색 결과로 바로 연결됩니다."
+            kosis_btn = "kosis.kr 바로가기"
+        st.markdown(
+            linkout_card("images/avatar-seulgi.png", "📊 KOSIS 통합검색", kosis_desc, kosis_url, kosis_btn),
+            unsafe_allow_html=True,
+        )
 
 with col4:
     with st.container(border=True, key="card-briefing"):
-        ch1, ch2 = st.columns([5, 1])
-        ch1.markdown('<p class="card-title">📰 정책브리핑 "사실은 이렇습니다"</p>', unsafe_allow_html=True)
-        ch2.markdown(avatar_badge("images/avatar-hangyeol.png"), unsafe_allow_html=True)
         if run and query:
-            error_msg = None
-            items = None
-            try:
-                items = fetch_briefing(query)
-            except Exception as e:
-                error_msg = str(e)
-            if error_msg:
-                st.caption(f"조회 실패: {error_msg}")
-            elif items is None:
-                st.caption("Streamlit Secrets에 POLICY_SERVICE_KEY를 추가하면 조회됩니다.")
-            elif items:
-                for it in items[:8]:
-                    st.markdown(f"**[{it['title']}]({it['url'] or '#'})**")
-                    st.caption(f"{it['minister']} · {it['date']}")
-            else:
-                st.caption('최근 3일 내 일치하는 "사실은 이렇습니다" 게시물이 없습니다.')
+            briefing_url = f"https://www.korea.kr/search/total/search.do?srchWord={quote(query)}"
+            briefing_desc = f'"{query}" 검색 결과로 바로 이동합니다.'
+            briefing_btn = "검색 결과 보기"
         else:
-            st.caption("검색을 실행하면 여기에 결과가 표시됩니다.")
+            briefing_url = "https://www.korea.kr/briefing/factView.do"
+            briefing_desc = "정부 각 부처가 언론 보도에 직접 반박·해명한 자료 모음. 검색어를 입력하고 버튼을 누르면 검색 결과로 바로 연결됩니다."
+            briefing_btn = "korea.kr 바로가기"
+        st.markdown(
+            linkout_card("images/avatar-hangyeol.png", '📰 정책브리핑 "사실은 이렇습니다"', briefing_desc, briefing_url, briefing_btn),
+            unsafe_allow_html=True,
+        )
 
 st.subheader("용어 사전 — 이 단어, 무슨 뜻?")
 with st.container(border=True, key="card-dict"):
     st.markdown(
         f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
-        f"{avatar_badge('images/avatar-mascot.png', size=38)}"
+        f"{avatar_badge('images/avatar-mascot.png', size=60)}"
         f"<span class='card-title' style='font-size:16px;'>📖 뉴스 용어 사전</span>"
         f"</div>",
         unsafe_allow_html=True,
