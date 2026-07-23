@@ -317,41 +317,52 @@ def fetch_briefing(keyword: str):
     return items
 
 
+def _parse_dict_xml(xml_text: str, source_name: str):
+    results = []
+    for block in xml_text.split("<item>")[1:]:
+        block = block.split("</item>")[0]
+        w_match = re.search(r"<word>(.*?)</word>", block, re.S)
+        d_match = re.search(r"<definition>(.*?)</definition>", block, re.S)
+        if d_match:
+            w = w_match.group(1).strip() if w_match else ""
+            d = re.sub("<[^>]+>", "", d_match.group(1)).strip()
+            results.append({"word": w, "source": source_name, "definition": d})
+    return results
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_dict(word: str):
     entries = []
+    debug = []
     if KRDICT_API_KEY:
         try:
             r = requests.get(
                 "https://krdict.korean.go.kr/api/search",
-                params={
-                    "key": KRDICT_API_KEY, "q": word, "translated": "n",
-                    "part": "word", "method": "exact", "type_search": "search", "req_type": "json",
-                },
+                params={"key": KRDICT_API_KEY, "q": word, "part": "word", "method": "exact"},
                 timeout=10,
             )
-            data = r.json()
-            for it in data.get("channel", {}).get("item", []):
-                d = (it.get("sense") or {}).get("definition")
-                if d:
-                    entries.append({"word": it.get("word"), "source": "한국어기초사전", "definition": d})
-        except Exception:
-            pass
+            debug.append(f"[한국어기초사전] HTTP {r.status_code} · 응답 앞부분: {r.text[:200]}")
+            entries = _parse_dict_xml(r.text, "한국어기초사전")
+        except Exception as e:
+            debug.append(f"[한국어기초사전] 요청 실패: {e}")
+    else:
+        debug.append("[한국어기초사전] KRDICT_API_KEY가 Secrets에 없습니다.")
+
     if not entries and STDICT_API_KEY:
         try:
             r = requests.get(
                 "https://stdict.korean.go.kr/api/search.do",
-                params={"key": STDICT_API_KEY, "q": word, "req_type": "json"},
+                params={"key": STDICT_API_KEY, "q": word},
                 timeout=10,
             )
-            data = r.json()
-            for it in data.get("channel", {}).get("item", []):
-                d = (it.get("sense") or {}).get("definition")
-                if d:
-                    entries.append({"word": it.get("word"), "source": "표준국어대사전", "definition": d})
-        except Exception:
-            pass
-    return entries
+            debug.append(f"[표준국어대사전] HTTP {r.status_code} · 응답 앞부분: {r.text[:200]}")
+            entries = _parse_dict_xml(r.text, "표준국어대사전")
+        except Exception as e:
+            debug.append(f"[표준국어대사전] 요청 실패: {e}")
+    elif not entries:
+        debug.append("[표준국어대사전] STDICT_API_KEY가 Secrets에 없습니다.")
+
+    return entries, debug
 
 
 def img_b64(path: str) -> str:
@@ -561,7 +572,12 @@ with st.container(border=True, key="card-dict"):
 
     def _run_dict_search():
         w = st.session_state.get("dict_word", "").strip()
-        st.session_state.dict_entries = fetch_dict(w) if w else None
+        if w:
+            entries, debug = fetch_dict(w)
+        else:
+            entries, debug = None, []
+        st.session_state.dict_entries = entries
+        st.session_state.dict_debug = debug
         st.session_state.dict_searched_word = w
 
     st.text_input(
@@ -573,12 +589,17 @@ with st.container(border=True, key="card-dict"):
 
     entries = st.session_state.get("dict_entries")
     searched_word = st.session_state.get("dict_searched_word")
+    debug_info = st.session_state.get("dict_debug")
     if entries:
         for e in entries[:5]:
             st.markdown(f"**{e['word']}** · _{e['source']}_")
             st.write(e["definition"])
     elif searched_word:
         st.caption(f'"{searched_word}"에 대한 뜻풀이를 찾지 못했습니다. 수색대원(챗봇)에게 물어보세요.')
+        if debug_info:
+            with st.expander("🔧 왜 안 됐는지 보기 (선생님용)"):
+                for line in debug_info:
+                    st.code(line)
 
 st.subheader("해외 출처 (연동 예정)")
 fc1, fc2 = st.columns(2)
