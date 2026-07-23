@@ -166,6 +166,23 @@ st.markdown(
         color:#b45309; border-radius:8px; text-decoration:none;
         font-size:13px; font-weight:700; background: rgba(245,158,11,0.08);
     }
+
+    /* 검색창 등 입력창은 항상 흰색으로 */
+    .stTextInput input, .stTextArea textarea {
+        background-color: #ffffff !important;
+        color: #16233b !important;
+        border: 1px solid #d9e2f1 !important;
+    }
+    .stTextInput input::placeholder { color: #94a3b8 !important; }
+
+    /* 헤더: 마스코트 + 제목을 가깝게 붙이기 */
+    .brand-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+    }
+    .brand-row img { width: 64px; height: 64px; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -366,12 +383,19 @@ def solar_chat(message: str) -> str:
         return f"오류가 발생했어요: {e}"
 
 
-h_logo, h_title = st.columns([1, 6])
-with h_logo:
-    st.image("images/mascot-main.png", width=76)
-with h_title:
-    st.markdown("<div class='cyber-title'>팩트수색대</div>", unsafe_allow_html=True)
-    st.markdown("<div class='cyber-sub'>FACT SEARCH SQUAD</div>", unsafe_allow_html=True)
+# ---- 상단: 마스코트 + 제목 (가깝게 붙여서, 사이버 타이포) ----
+st.markdown(
+    f"""
+    <div class="brand-row">
+        <img src="data:image/png;base64,{img_b64('images/mascot-main.png')}">
+        <div>
+            <div class="cyber-title">팩트수색대</div>
+            <div class="cyber-sub">FACT SEARCH SQUAD</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     "<div class='cyber-tagline'>AI 시대의 뉴스·정보 교차검증 대시보드</div>",
@@ -382,13 +406,13 @@ st.write("")
 
 hc1, hc2, hc3, hc4 = st.columns(4)
 with hc1:
-    holo_card("images/char-briefing-hangyeol.png", "01", "한결", "리더 / 기록", "변함없이 '한결'같은 마음으로 진실을 지킨다")
+    holo_card("images/char-briefing-hangyeol.png", "01", "한결 대원", "리더 / 기록", "변함없이 '한결'같은 마음으로 진실을 지킨다")
 with hc2:
-    holo_card("images/char-gdelt-jinsil.png", "02", "진실", "정보 수집", "정보 속에 숨겨진 진짜 '진실'을 찾아낸다")
+    holo_card("images/char-gdelt-jinsil.png", "02", "진실 대원", "정보 수집", "정보 속에 숨겨진 진짜 '진실'을 찾아낸다")
 with hc3:
-    holo_card("images/char-kosis-seulgi.png", "03", "슬기", "데이터 분석", "데이터를 '슬기'롭게 분석해 핵심을 짚어낸다")
+    holo_card("images/char-kosis-seulgi.png", "03", "슬기 대원", "데이터 분석", "데이터를 '슬기'롭게 분석해 핵심을 짚어낸다")
 with hc4:
-    holo_card("images/char-dict-hyeontam.png", "04", "현탐", "현장 조사", "'현장'을 철저히 '탐구'하고 증거를 포착한다")
+    holo_card("images/char-dict-hyeontam.png", "04", "현탐 대원", "현장 조사", "'현장'을 철저히 '탐구'하고 증거를 포착한다")
 
 st.write("")
 
