@@ -4,18 +4,28 @@ Monster Insight — AI 미디어 몬스터 헌터
 
 필요한 Secrets (전부 선택 사항 — 없으면 데모 데이터/로컬 저장으로 동작합니다):
   GOOGLE_FACTCHECK_API_KEY   루머 유령 미션에서 실제 팩트체크 검색에 사용
-  SOLAR_API_KEY              AI 환각 몬스터 미션에서 실제 AI 답변 생성에 사용 (Upstage Solar)
+  SOLAR_API_KEY              AI 환각 몬스터 미션 + 수사 요원 AI 질문 답변에 사용 (Upstage Solar)
+  STDICT_API_KEY             각 사건 파일의 표준국어대사전 검색에 사용 (국립국어원)
+  KRDICT_API_KEY             한국어기초사전 검색에 사용 (선택, 있으면 우선 조회)
   SUPABASE_URL               학생 플레이 기록을 저장할 Supabase 프로젝트 URL
   SUPABASE_KEY               Supabase anon/service key
 
 이 파일에는 실제 키 값이 들어있지 않습니다. Streamlit Secrets에 위 이름으로 등록하세요.
 """
 
+import html
+import os
 import random
+import re
+from base64 import b64encode
 from datetime import datetime, timezone
 
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Monster Insight", page_icon="🧠", layout="wide")
 
@@ -32,6 +42,8 @@ def secret(key: str) -> str:
 
 GOOGLE_FACTCHECK_API_KEY = secret("GOOGLE_FACTCHECK_API_KEY")
 SOLAR_API_KEY = secret("SOLAR_API_KEY")
+STDICT_API_KEY = secret("STDICT_API_KEY")
+KRDICT_API_KEY = secret("KRDICT_API_KEY")
 SUPABASE_URL = secret("SUPABASE_URL").rstrip("/")
 SUPABASE_KEY = secret("SUPABASE_KEY")
 
@@ -54,7 +66,7 @@ st.markdown(
             linear-gradient(180deg, #04070f 0%, #0a0f24 45%, #120a2e 100%);
         background-attachment: fixed;
     }
-    h1, h2, h3 { color: #eaf6ff; }
+    h1, h2, h3, h4, h5, h6 { color: #eaf6ff; }
 
     .cyber-title {
         font-family: 'Orbitron', sans-serif; font-weight: 900; color: #ffffff;
@@ -76,7 +88,10 @@ st.markdown(
     div[class*="st-key-panel-"] h1, div[class*="st-key-panel-"] h2,
     div[class*="st-key-panel-"] h3, div[class*="st-key-panel-"] h4,
     div[class*="st-key-panel-"] p, div[class*="st-key-panel-"] span,
-    div[class*="st-key-panel-"] label, div[class*="st-key-panel-"] li {
+    div[class*="st-key-panel-"] label, div[class*="st-key-panel-"] li,
+    div[class*="st-key-panel-"] strong, div[class*="st-key-panel-"] b,
+    div[class*="st-key-panel-"] em, div[class*="st-key-panel-"] a,
+    div[class*="st-key-panel-"] code {
         color: #16233b !important;
     }
 
@@ -89,13 +104,13 @@ st.markdown(
         text-align: center;
         background: radial-gradient(circle at 50% 0%, rgba(167,139,250,0.14), rgba(8,10,24,0.9));
     }
-    .monster-emoji { font-size: 54px; line-height: 1; }
+    .monster-emoji { font-size: 58px; line-height: 1; }
     .monster-name {
         font-family: 'Orbitron', sans-serif; font-weight: 700; color: #ffffff;
-        font-size: 18px; margin: 8px 0 2px; text-shadow: 0 0 8px rgba(167,139,250,0.65);
+        font-size: 20px; margin: 8px 0 2px; text-shadow: 0 0 8px rgba(167,139,250,0.65);
     }
-    .monster-cat { font-size: 11px; color:#9fd6f5; letter-spacing: 1px; }
-    .monster-intro { font-size: 13px; color:#d7e6ff; margin-top:10px; line-height:1.5; }
+    .monster-cat { font-size: 12.5px; color:#9fd6f5; letter-spacing: 1px; }
+    .monster-intro { font-size: 14.5px; color:#d7e6ff; margin-top:10px; line-height:1.55; }
 
     .dex-card {
         border-radius: 14px; padding: 16px 10px; text-align:center;
@@ -113,8 +128,51 @@ st.markdown(
     .stButton button {
         background-color: #a78bfa !important; color: #ffffff !important;
         border: none !important; border-radius: 8px !important; font-weight: 700 !important;
+        font-size: 15px !important;
     }
     .stButton button:hover { background-color: #8b6cf0 !important; color:#ffffff !important; }
+
+    /* '수사 시작' 버튼(홈 화면 몬스터 카드 아래) — 더 진한 보라색 */
+    div[class*="st-key-start-"] button {
+        background-color: #6d3fd6 !important;
+        box-shadow: 0 0 10px rgba(124,58,237,0.55) !important;
+    }
+    div[class*="st-key-start-"] button:hover { background-color: #5c2fc2 !important; }
+
+    /* 사이드바 버튼: 진하고 플랫한 사이버 톤, 그라데이션/광택 없이, 흰 글씨를 더 크게 */
+    section[data-testid="stSidebar"] .stButton button {
+        background-color: #12101f !important;
+        background-image: none !important;
+        box-shadow: none !important;
+        border: 1px solid rgba(167,139,250,0.55) !important;
+        color: #ffffff !important;
+        text-align: left !important;
+        font-size: 16.5px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.2px;
+        padding-top: 11px !important;
+        padding-bottom: 11px !important;
+    }
+    section[data-testid="stSidebar"] .stButton button:hover {
+        background-color: #1c1836 !important;
+        border-color: rgba(167,139,250,0.9) !important;
+    }
+
+    /* 기본 Streamlit 텍스트(캡션·라벨·본문 등)를 어두운 배경에서도 밝게 — 흰 배경 패널(panel-)은 !important로 이미 보호됨 */
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] span,
+    [data-testid="stMarkdownContainer"] strong,
+    [data-testid="stCaptionContainer"] p,
+    [data-testid="stCaptionContainer"] span,
+    label, .stRadio label, .stCheckbox label {
+        color: #eaf6ff;
+    }
+
+    /* 전체 기본 글자 크기를 살짝 키움 */
+    [data-testid="stAppViewContainer"] { font-size: 17px; }
+    .cyber-sub { font-size: 0.95rem; }
+    .cyber-tagline { font-size: 1.05rem; }
 
     .stTextInput input, .stTextArea textarea {
         background-color: #ffffff !important; color: #16233b !important;
@@ -123,9 +181,36 @@ st.markdown(
     .stTextInput input::placeholder { color: #94a3b8 !important; }
 
     .xp-badge {
-        display:inline-block; padding:4px 12px; border-radius:999px;
+        display:inline-block; padding:5px 14px; border-radius:999px;
         background: rgba(167,139,250,0.18); border:1px solid rgba(167,139,250,0.5);
-        color:#e9defe; font-size:13px; font-weight:700; margin-right:8px;
+        color:#ffffff; font-size:14.5px; font-weight:700; margin-right:8px;
+    }
+
+    /* expander(접이식 섹션) 자체에 어두운 배경을 줘서, 포커스/호버 시에도 글자가 항상 잘 보이게 */
+    [data-testid="stExpander"] {
+        background: rgba(10,12,28,0.92) !important;
+        border: 1px solid rgba(167,139,250,0.35) !important;
+        border-radius: 12px !important;
+    }
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary p,
+    [data-testid="stExpander"] summary span,
+    [data-testid="stExpanderHeader"],
+    [data-testid="stExpanderHeader"] p,
+    [data-testid="stExpanderHeader"] span {
+        color: #eaf6ff !important;
+        background: transparent !important;
+    }
+    [data-testid="stExpander"] svg { fill: #eaf6ff !important; }
+    [data-testid="stExpanderDetails"] {
+        background: transparent !important;
+    }
+    [data-testid="stExpanderDetails"] p,
+    [data-testid="stExpanderDetails"] span,
+    [data-testid="stExpanderDetails"] li,
+    [data-testid="stExpanderDetails"] label,
+    [data-testid="stExpanderDetails"] strong {
+        color: #eaf6ff;
     }
     </style>
     """,
@@ -206,6 +291,25 @@ AD_ROUNDS = [
      "answer": "뉴스", "explain": "찬반 입장을 균형 있게 다루는 것은 일반적인 뉴스 기사의 특징이에요."},
 ]
 
+# 실제 공공데이터 기반 통계 (몬스터 미션 안에서 차트로 제공)
+# 출처: 한국형사법무정책연구원(KICJ) CCJS 이슈통계 "디지털 성범죄의 진화: 딥페이크 범죄의 급증" (2024)
+DEEPFAKE_TREND = {
+    "labels": ["방송통신심의위 심의", "피해자 지원", "경찰 신고"],
+    "values": [5, 7, 6],
+    "note": "2021년 대비 2024년 10월 기준 증가 배수(배)",
+    "source": "한국형사법무정책연구원(KICJ) CCJS 이슈통계 (2024)",
+}
+
+# 출처: 공공데이터포털 "경찰청_보이스피싱 현황_20251231"
+PHISHING_TREND = {
+    "categories": ["기관사칭형", "대출사기형"],
+    "before_label": "이전(2016/2019년)",
+    "before_values": [3384, 30448],
+    "after_label": "2025년",
+    "after_values": [13323, 10037],
+    "source": "공공데이터포털 '경찰청_보이스피싱 현황_20251231'",
+}
+
 PHISHING_ROUNDS = [
     {"prompt": "\"[긴급] 고객님의 계좌가 정지되었습니다. 아래 링크에서 즉시 본인 인증을 완료하세요: bit.ly/acc-check\"",
      "answer": "피싱", "explain": "긴급성 강조 + 단축 URL + 즉시 인증 요구는 대표적인 피싱 신호예요."},
@@ -265,6 +369,76 @@ def solar_chat(message: str) -> str:
         return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
         return f"오류가 발생했어요: {e}"
+
+
+def solar_helper_chat(message: str) -> str:
+    """모든 사건 파일에서 쓰는 '수사 요원에게 물어보기' — 정직하게 돕는 버전 (환각 몬스터 전용 프롬프트와 다름)."""
+    if not SOLAR_API_KEY:
+        return "Solar API 키가 없어 데모 모드예요. Secrets에 SOLAR_API_KEY를 추가하면 실제 AI 답변을 받을 수 있어요."
+    try:
+        r = requests.post(
+            "https://api.upstage.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {SOLAR_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "solar-pro2",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "너는 'Monster Insight' 웹사이트의 수사 요원이다. 미디어 리터러시 수업을 듣는 "
+                            "청소년(중·고등학생)에게 뉴스에 나오는 낯선 용어나 시사 개념을 설명해준다. "
+                            "어려운 한자어·전문용어는 쉬운 말로 풀어 설명하고, 필요하면 짧은 예시를 든다. "
+                            "답변은 3~5문장 이내로 짧고 친근하게, 반말은 쓰지 않되 딱딱하지 않은 존댓말로 한다."
+                        ),
+                    },
+                    {"role": "user", "content": message},
+                ],
+            },
+            timeout=20,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"오류가 발생했어요: {e}"
+
+
+def _parse_dict_xml(xml_text: str, source_name: str):
+    results = []
+    for block in xml_text.split("<item>")[1:]:
+        block = block.split("</item>")[0]
+        w_match = re.search(r"<word>(.*?)</word>", block, re.S)
+        d_match = re.search(r"<definition>(.*?)</definition>", block, re.S)
+        if d_match:
+            w = w_match.group(1).strip() if w_match else ""
+            d = re.sub("<[^>]+>", "", d_match.group(1)).strip()
+            results.append({"word": w, "source": source_name, "definition": d})
+    return results
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_dict(word: str):
+    entries = []
+    if KRDICT_API_KEY:
+        try:
+            r = requests.get(
+                "https://krdict.korean.go.kr/api/search",
+                params={"key": KRDICT_API_KEY, "q": word, "part": "word", "method": "exact"},
+                timeout=10,
+            )
+            entries = _parse_dict_xml(r.text, "한국어기초사전")
+        except Exception:
+            pass
+    if not entries and STDICT_API_KEY:
+        try:
+            r = requests.get(
+                "https://stdict.korean.go.kr/api/search.do",
+                params={"key": STDICT_API_KEY, "q": word},
+                timeout=10,
+            )
+            entries = _parse_dict_xml(r.text, "표준국어대사전")
+        except Exception:
+            pass
+    return entries
 
 
 def supabase_enabled() -> bool:
@@ -367,6 +541,42 @@ def record_result(monster_id: str, success: bool, stars: int):
     return xp_gain
 
 
+MONSTER_IMAGE_DIRS = ["images", "image"]
+MONSTER_IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp"]
+
+
+def _find_monster_image_path(monster_id: str):
+    for folder in MONSTER_IMAGE_DIRS:
+        for ext in MONSTER_IMAGE_EXTS:
+            p = os.path.join(folder, f"{monster_id}{ext}")
+            if os.path.exists(p):
+                return p
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def _img_b64(path: str, mtime: float) -> str:
+    with open(path, "rb") as f:
+        return b64encode(f.read()).decode()
+
+
+def monster_visual_html(monster_id: str, size: int = 64) -> str:
+    """images/<monster_id>.png(jpg/webp) 파일이 있으면 그림으로, 없으면 이모지로 표시한다."""
+    m = MONSTERS[monster_id]
+    path = _find_monster_image_path(monster_id)
+    if path:
+        try:
+            b64 = _img_b64(path, os.path.getmtime(path))
+            ext = os.path.splitext(path)[1].lstrip(".").replace("jpg", "jpeg")
+            return (
+                f'<img src="data:image/{ext};base64,{b64}" '
+                f'style="width:{size}px;height:{size}px;object-fit:contain;border-radius:10px;" />'
+            )
+        except Exception:
+            pass
+    return f'<span style="font-size:{size}px;line-height:1;">{m["emoji"]}</span>'
+
+
 def stars_html(n: int, total: int = 5) -> str:
     return "★" * n + "☆" * (total - n)
 
@@ -375,6 +585,56 @@ def goto(page: str, monster: str | None = None):
     st.session_state.page = page
     if monster is not None:
         st.session_state.current_monster = monster
+
+
+def render_which_face_is_real():
+    st.markdown("**🕵️ 실전 연습: Which Face Is Real?**")
+    st.caption(
+        "AI가 만든 얼굴과 실제 사람의 얼굴을 직접 구별해보는 훈련 도구입니다. "
+        "워싱턴대학교 Jevin West · Carl Bergstrom 교수의 'Calling Bullshit' 프로젝트에서 제공합니다."
+    )
+    try:
+        components.iframe("https://whichfaceisreal.com/index.php", height=650, scrolling=True)
+    except Exception:
+        st.info("이 환경에서는 미리보기가 표시되지 않을 수 있어요. 아래 버튼으로 바로 열어보세요.")
+    st.link_button("🔗 whichfaceisreal.com 에서 직접 해보기", "https://whichfaceisreal.com/index.php")
+    st.caption("출처/저작권: Jevin West & Carl Bergstrom, University of Washington (Calling Bullshit project)")
+
+
+# ---------------------------------------------------------------------------
+# 실제 데이터 차트 (딥페이크 로봇 / 피싱 박스 미션에서 사용)
+# ---------------------------------------------------------------------------
+
+def render_deepfake_data():
+    d = DEEPFAKE_TREND
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=d["labels"], y=d["values"],
+                marker_color=["#a78bfa", "#38bdf8", "#5eead4"],
+                text=[f"{v}배" for v in d["values"]], textposition="outside",
+            )
+        ]
+    )
+    fig.update_layout(
+        title="딥페이크 관련 지표 증가 추세", yaxis_title="증가 배수(배)",
+        margin=dict(l=10, r=10, t=40, b=10), height=320,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"{d['note']} · 출처: {d['source']}")
+
+
+def render_phishing_data():
+    d = PHISHING_TREND
+    fig = go.Figure()
+    fig.add_trace(go.Bar(name=d["before_label"], x=d["categories"], y=d["before_values"], marker_color="#94a3b8"))
+    fig.add_trace(go.Bar(name=d["after_label"], x=d["categories"], y=d["after_values"], marker_color="#a78bfa"))
+    fig.update_layout(
+        barmode="group", title="보이스피싱 유형별 발생 건수 변화", yaxis_title="발생 건수(건)",
+        margin=dict(l=10, r=10, t=40, b=10), height=320,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"출처: {d['source']}")
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +673,11 @@ def run_quiz(monster_id: str, rounds: list, choice_labels: list):
     r = rounds[ridx]
     with st.container(border=True, key=f"panel-quiz-{monster_id}"):
         st.progress(ridx / total, text=f"{ridx + 1} / {total} 라운드")
-        st.markdown(f"**{r['prompt']}**")
+        st.markdown(
+            f'<p style="color:#16233b !important; font-weight:700; font-size:16px; margin:6px 0;">'
+            f'{html.escape(r["prompt"])}</p>',
+            unsafe_allow_html=True,
+        )
         choice = st.radio("이것은 무엇일까요?", choice_labels, key=f"{monster_id}_choice_{ridx}", index=None)
         if st.button("제출", key=f"submit-{monster_id}-{ridx}"):
             if choice is None:
@@ -461,8 +725,15 @@ def play_rumor(monster_id: str):
             if claims:
                 for c in claims[:5]:
                     review = (c.get("claimReview") or [{}])[0]
-                    st.markdown(f"- **{c.get('text', '')}** · {(review.get('publisher') or {}).get('name', '')} "
-                                f"· 판정: {review.get('textualRating', '미상')}")
+                    text_esc = html.escape(c.get("text", ""))
+                    publisher_esc = html.escape((review.get("publisher") or {}).get("name", ""))
+                    rating_esc = html.escape(str(review.get("textualRating", "미상")))
+                    st.markdown(
+                        f'<div style="color:#16233b !important; margin:6px 0; line-height:1.5;">'
+                        f'• <strong style="color:#16233b !important;">{text_esc}</strong> '
+                        f'· {publisher_esc} · 판정: {rating_esc}</div>',
+                        unsafe_allow_html=True,
+                    )
             else:
                 st.caption("등록된 팩트체크 결과가 없습니다. 그래도 아래 체크리스트로 판단해보세요.")
 
@@ -558,12 +829,45 @@ def play_hallucination(monster_id: str):
                     st.rerun()
 
 
-def play_monster(monster_id: str):
+def render_dictionary_lookup(monster_id: str):
+    st.markdown("**📖 표준국어대사전 찾아보기**")
+    st.caption("뉴스나 미션에 나온 낯선 단어를 국립국어원 사전에서 검색해보세요.")
+    word = st.text_input("단어 입력", key=f"dict_word_{monster_id}", placeholder="예: 필리버스터, 유예")
+    if st.button("사전 검색", key=f"dict_search_{monster_id}"):
+        q = word.strip()
+        st.session_state[f"dict_query_{monster_id}"] = q
+        st.session_state[f"dict_result_{monster_id}"] = fetch_dict(q) if q else []
+
+    query = st.session_state.get(f"dict_query_{monster_id}")
+    entries = st.session_state.get(f"dict_result_{monster_id}")
+    if entries:
+        for e in entries[:5]:
+            st.markdown(f"**{e['word']}** · _{e['source']}_")
+            st.write(e["definition"])
+    elif query is not None:
+        if not (STDICT_API_KEY or KRDICT_API_KEY):
+            st.caption("Secrets에 STDICT_API_KEY(표준국어대사전)가 없어 데모 모드예요. 등록하면 실제 사전 검색이 가능해요.")
+        elif query:
+            st.caption(f'"{query}"에 대한 뜻풀이를 찾지 못했어요. 다른 표현으로 검색해보세요.')
+
+
+def render_ask_squad(monster_id: str):
+    st.markdown("**💬 수사 요원에게 물어보기 (AI)**")
+    st.caption("궁금한 용어나 개념을 물어보면 AI 수사 요원이 쉽게 설명해줘요.")
+    q = st.text_input("질문 입력", key=f"ask_q_{monster_id}", placeholder="예: 팩트체크가 정확히 뭐예요?")
+    if st.button("질문하기", key=f"ask_btn_{monster_id}"):
+        st.session_state[f"ask_a_{monster_id}"] = solar_helper_chat(q.strip()) if q.strip() else ""
+    answer = st.session_state.get(f"ask_a_{monster_id}")
+    if answer:
+        st.info(answer)
+
+
+def render_monster_intro_card(monster_id: str):
     m = MONSTERS[monster_id]
     st.markdown(
         f"""
         <div class="monster-card">
-            <div class="monster-emoji">{m['emoji']}</div>
+            <div class="monster-emoji">{monster_visual_html(monster_id, size=72)}</div>
             <div class="monster-name">{m['name']} 등장!!</div>
             <div class="monster-cat">{CATEGORY_LABEL[m['category']]}</div>
             <div class="monster-intro">{m['intro']}</div>
@@ -571,15 +875,33 @@ def play_monster(monster_id: str):
         """,
         unsafe_allow_html=True,
     )
+
+
+def play_monster(monster_id: str):
+    st.write("")
+
+    tool_col1, tool_col2 = st.columns(2)
+    with tool_col1:
+        with st.expander("📖 표준국어대사전 찾아보기", expanded=False):
+            render_dictionary_lookup(monster_id)
+    with tool_col2:
+        with st.expander("💬 수사 요원에게 물어보기 (AI)", expanded=False):
+            render_ask_squad(monster_id)
     st.write("")
 
     if monster_id == "rumor":
         play_rumor(monster_id)
     elif monster_id == "deepfake":
+        with st.expander("📊 실제 데이터로 보는 딥페이크 위협", expanded=True):
+            render_deepfake_data()
+        with st.expander("🕵️ 실전 연습: 진짜 얼굴 vs AI 얼굴 구별하기", expanded=True):
+            render_which_face_is_real()
         run_quiz(monster_id, DEEPFAKE_ROUNDS, ["AI 그림", "실제 사진"])
     elif monster_id == "ad":
         run_quiz(monster_id, AD_ROUNDS, ["광고", "뉴스"])
     elif monster_id == "phishing":
+        with st.expander("📊 실제 데이터로 보는 피싱 범죄 추세", expanded=True):
+            render_phishing_data()
         run_quiz(monster_id, PHISHING_ROUNDS, ["피싱", "정상"])
     elif monster_id == "algorithm":
         play_algorithm(monster_id)
@@ -614,7 +936,7 @@ def page_home():
             st.markdown(
                 f"""
                 <div class="monster-card" style="cursor:pointer;">
-                    <div class="monster-emoji">{m['emoji']}</div>
+                    <div class="monster-emoji">{monster_visual_html(mid, size=64)}</div>
                     <div class="monster-name">{m['name']}</div>
                     <div class="monster-cat">{CATEGORY_LABEL[m['category']]}</div>
                     <div class="monster-intro">{'포획 완료 ' + stars_html(col['stars']) if col['captured'] else '아직 미포획'}</div>
@@ -701,16 +1023,34 @@ def page_report():
     st.markdown("### 📊 나의 통찰 리포트")
     with st.container(border=True, key="panel-report"):
         st.write(f"**{ss.student_name or '익명 탐정'}** 님의 영역별 역량입니다.")
+
+        labels = list(CATEGORY_LABEL.values())
+        scores = []
         any_data = False
+        for cat, label in CATEGORY_LABEL.items():
+            data = ss.category_scores[cat]
+            score = round(data["success"] / data["attempts"] * 100) if data["attempts"] else 0
+            if data["attempts"]:
+                any_data = True
+            scores.append(score)
+
+        if any_data:
+            fig = go.Figure()
+            fig.add_trace(go.Scatterpolar(r=scores + [scores[0]], theta=labels + [labels[0]],
+                                           fill="toself", line_color="#a78bfa", name="역량 점수"))
+            fig.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                showlegend=False, margin=dict(l=30, r=30, t=30, b=30), height=380,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
         for cat, label in CATEGORY_LABEL.items():
             data = ss.category_scores[cat]
             if data["attempts"] == 0:
                 st.write(f"- {label}: 아직 도전 기록이 없어요.")
                 continue
-            any_data = True
             score = round(data["success"] / data["attempts"] * 100)
             st.write(f"**{label}** — {score}점 (시도 {data['attempts']}회 · 성공 {data['success']}회)")
-            st.progress(score / 100)
         if not any_data:
             st.info("아직 어떤 몬스터도 조사하지 않았어요. 사건을 시작해보세요!")
 
@@ -751,51 +1091,66 @@ def page_teacher():
         st.info("아직 저장된 플레이 기록이 없습니다.")
         return
 
-    monster_counts = {}
-    monster_attempts = {}
-    monster_success = {}
-    total_success = 0
-    for row in rows:
-        mid = row.get("monster_id", "?")
-        name = row.get("monster_name", mid)
-        monster_attempts[name] = monster_attempts.get(name, 0) + 1
-        if row.get("success"):
-            monster_counts[name] = monster_counts.get(name, 0) + 1
-            monster_success[name] = monster_success.get(name, 0) + 1
-            total_success += 1
+    df = pd.DataFrame(rows)
+    df["success"] = df["success"].astype(bool)
+    if "created_at" in df.columns:
+        df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
+
+    total_success = int(df["success"].sum())
 
     with st.container(border=True, key="panel-teacher"):
-        st.write(f"총 플레이 기록: **{len(rows)}건** · 성공 **{total_success}건**")
+        st.write(f"총 플레이 기록: **{len(df)}건** · 성공 **{total_success}건**")
 
-        if monster_counts:
-            most_caught = max(monster_counts, key=monster_counts.get)
-            st.write(f"**가장 많이 잡은 몬스터:** {most_caught} ({monster_counts[most_caught]}회)")
+        monster_stats = (
+            df.groupby("monster_name")["success"]
+            .agg(시도="count", 성공="sum")
+            .reset_index()
+        )
+        monster_stats["성공률"] = (monster_stats["성공"] / monster_stats["시도"] * 100).round(0)
 
-        difficulty = {
-            name: (monster_success.get(name, 0) / att)
-            for name, att in monster_attempts.items()
-            if att > 0
-        }
-        if difficulty:
-            hardest = min(difficulty, key=difficulty.get)
-            st.write(f"**가장 어려운 몬스터:** {hardest} (성공률 {difficulty[hardest] * 100:.0f}%)")
+        if not monster_stats.empty:
+            most_caught_row = monster_stats.sort_values("성공", ascending=False).iloc[0]
+            hardest_row = monster_stats.sort_values("성공률", ascending=True).iloc[0]
+            st.write(f"**가장 많이 잡은 몬스터:** {most_caught_row['monster_name']} ({int(most_caught_row['성공'])}회)")
+            st.write(f"**가장 어려운 몬스터:** {hardest_row['monster_name']} (성공률 {hardest_row['성공률']:.0f}%)")
 
-        overall_rate = total_success / len(rows) if rows else 0
+        overall_rate = total_success / len(df) if len(df) else 0
         stars = max(1, round(overall_rate * 5))
         st.write(f"**학급 평균 통찰력:** {stars_html(stars)} (전체 성공률 {overall_rate * 100:.0f}%)")
 
         st.write("---")
+        st.markdown("**몬스터별 시도·성공 건수**")
+        if not monster_stats.empty:
+            fig_bar = px.bar(
+                monster_stats.melt(id_vars="monster_name", value_vars=["시도", "성공"], var_name="구분", value_name="건수"),
+                x="monster_name", y="건수", color="구분", barmode="group",
+                color_discrete_map={"시도": "#94a3b8", "성공": "#a78bfa"},
+            )
+            fig_bar.update_layout(margin=dict(l=10, r=10, t=20, b=10), height=340, xaxis_title="", yaxis_title="건수")
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        if "created_at" in df.columns and df["created_at"].notna().any():
+            st.markdown("**일별 플레이 건수 추이**")
+            daily = (
+                df.dropna(subset=["created_at"])
+                .set_index("created_at")
+                .resample("D")
+                .size()
+                .reset_index(name="플레이 건수")
+            )
+            fig_line = px.line(daily, x="created_at", y="플레이 건수", markers=True)
+            fig_line.update_layout(margin=dict(l=10, r=10, t=20, b=10), height=300, xaxis_title="날짜")
+            st.plotly_chart(fig_line, use_container_width=True)
+
+        st.write("---")
         st.markdown("**학생별 요약**")
-        by_student = {}
-        for row in rows:
-            name = row.get("student_name", "익명")
-            s = by_student.setdefault(name, {"attempts": 0, "success": 0, "xp": 0})
-            s["attempts"] += 1
-            s["xp"] += row.get("xp_gained", 0) or 0
-            if row.get("success"):
-                s["success"] += 1
-        for name, s in sorted(by_student.items(), key=lambda kv: -kv[1]["xp"]):
-            st.write(f"- {name}: 시도 {s['attempts']}회 · 성공 {s['success']}회 · 누적 XP {s['xp']}")
+        student_stats = (
+            df.groupby("student_name")
+            .agg(시도=("success", "count"), 성공=("success", "sum"), 누적XP=("xp_gained", "sum"))
+            .reset_index()
+            .sort_values("누적XP", ascending=False)
+        )
+        st.dataframe(student_stats, use_container_width=True, hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -817,10 +1172,32 @@ def main():
             st.rerun()
 
         st.caption("몬스터 바로가기")
+        icon_css_parts = []
         for mid, m in MONSTERS.items():
-            if st.button(f"{m['emoji']} {m['name']}", key=f"nav-{mid}", use_container_width=True):
+            path = _find_monster_image_path(mid)
+            label = m["name"] if path else f"{m['emoji']} {m['name']}"
+            if st.button(label, key=f"nav-{mid}", use_container_width=True):
                 goto("playing", mid)
                 st.rerun()
+            if path:
+                try:
+                    b64 = _img_b64(path, os.path.getmtime(path))
+                    ext = os.path.splitext(path)[1].lstrip(".").replace("jpg", "jpeg")
+                    icon_css_parts.append(
+                        f"""
+                        section[data-testid="stSidebar"] div[class*="st-key-nav-{mid}"] button {{
+                            background-image: url(data:image/{ext};base64,{b64}) !important;
+                            background-repeat: no-repeat !important;
+                            background-position: 14px center !important;
+                            background-size: 32px 32px !important;
+                            padding-left: 54px !important;
+                        }}
+                        """
+                    )
+                except Exception:
+                    pass
+        if icon_css_parts:
+            st.markdown(f"<style>{''.join(icon_css_parts)}</style>", unsafe_allow_html=True)
 
         st.divider()
         if st.button("🏆 탐정 레벨", use_container_width=True):
@@ -838,35 +1215,54 @@ def main():
             goto("teacher")
             st.rerun()
 
-    st.markdown(
-        """
-        <div>
-            <div class="cyber-title">🧠 Monster Insight</div>
-            <div class="cyber-sub">AI MEDIA MONSTER HUNTER</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown("<div class='cyber-tagline'>미디어 몬스터를 잡고 통찰력을 키워라!</div>", unsafe_allow_html=True)
-    st.write("")
-
     page = ss.page
-    if page == "home":
-        page_home()
-    elif page == "playing":
+
+    if page == "playing":
         mid = ss.current_monster or random.choice(TEAM)
         ss.current_monster = mid
+        head_col, card_col = st.columns([1, 1.4])
+        with head_col:
+            st.markdown(
+                """
+                <div>
+                    <div class="cyber-title">🧠 Monster Insight</div>
+                    <div class="cyber-sub">AI MEDIA MONSTER HUNTER</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                "<div class='cyber-tagline'>미디어 몬스터를 잡고 통찰력을 키워라!</div>",
+                unsafe_allow_html=True,
+            )
+        with card_col:
+            render_monster_intro_card(mid)
         play_monster(mid)
-    elif page == "level":
-        page_level()
-    elif page == "dex":
-        page_dex()
-    elif page == "report":
-        page_report()
-    elif page == "teacher":
-        page_teacher()
     else:
-        page_home()
+        st.markdown(
+            """
+            <div>
+                <div class="cyber-title">🧠 Monster Insight</div>
+                <div class="cyber-sub">AI MEDIA MONSTER HUNTER</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div class='cyber-tagline'>미디어 몬스터를 잡고 통찰력을 키워라!</div>", unsafe_allow_html=True)
+        st.write("")
+
+        if page == "home":
+            page_home()
+        elif page == "level":
+            page_level()
+        elif page == "dex":
+            page_dex()
+        elif page == "report":
+            page_report()
+        elif page == "teacher":
+            page_teacher()
+        else:
+            page_home()
 
     st.divider()
     st.caption(
